@@ -3,3 +3,4 @@ default: true
 
 # Disable the line-length limit (MD013)
 MD013: false
+MD007: false
