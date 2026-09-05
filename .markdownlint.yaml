@@ -1,0 +1,5 @@
+# Default markdownlint configuration
+default: true
+
+# Disable the line-length limit (MD013)
+MD013: false

@@ -14,11 +14,51 @@ jobs:
   markdownlint:
     name: Run Markdown Linter
     runs-on: ubuntu-latest
+    
+    # CRITICAL: This permission allows the GitHub Actions bot to create issues
+    permissions:
+      issues: write
+      contents: read
+      
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Run markdownlint
-        uses: DavidAnson/markdownlint-cli2-action@v15
-        with:
-          globs: "**/*.md"
+      - name: Install markdownlint
+        run: npm install -g markdownlint-cli2
+
+      - name: Run linter and capture output
+        id: linter
+        # We redirect both standard output and error output to a text file
+        run: markdownlint-cli2 "**/*.md" > lint_report.txt 2>&1
+        continue-on-error: true # Prevents the workflow from stopping here if errors are found
+
+      - name: Create Issues for Failed Files
+        if: steps.linter.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # 1. Extract unique file names that have errors (looks for anything ending in .md before the first colon)
+          grep -oE '^[^:]+\.md' lint_report.txt | sort -u > bad_files.txt
+          
+          # 2. Loop through each file, extract its specific errors, and create an issue
+          while IFS= read -r file; do
+            # Get only the error lines for this specific file
+            grep "^$file" lint_report.txt > current_file_errors.txt
+            
+            # Create the GitHub Issue using the GitHub CLI (gh)
+            gh issue create \
+              --title "📝 Markdown Lint Errors: $file" \
+              --body "The automated linter found formatting issues in \`$file\`. Please review and fix them.
+
+              **Error Details:**
+              \`\`\`text
+              $(cat current_file_errors.txt)
+              \`\`\`" \
+              --label "documentation"
+          done < bad_files.txt
+
+      - name: Fail the workflow
+        # Finally, force the workflow to show a red "X" if the linter failed
+        if: steps.linter.outcome == 'failure'
+        run: exit 1
